@@ -1,17 +1,16 @@
-from typing import List, Annotated, Literal
+from typing import List, Literal
 from typing_extensions import TypedDict
-from langgraph.graph import END, StateGraph, START
+from langgraph.graph import END, StateGraph
 from langchain.schema import Document
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_ollama import ChatOllama
 from langchain_chroma import Chroma
-from prompts import ROUTER_INSTRUCTIONS, DOCUMENT_GRADER_INSTRUCTIONS
+from prompts import ROUTER_INSTRUCTIONS, DOCUMENT_GRADER_INSTRUCTIONS, RESPONSE_INSTRUCTIONS
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 from langchain_community.tools.tavily_search import TavilySearchResults
 import os
 from dotenv import load_dotenv
-import getpass
 from IPython.display import Image, display
 
 load_dotenv()
@@ -38,6 +37,7 @@ class GraphState(TypedDict):
     documents: List
     question: str
     answer: str
+    loop_step: int
     
 class RouterAnswer(BaseModel):
     datasource: Literal["websearch", "vectorstore"] = Field(
@@ -119,11 +119,12 @@ def grade_documents(state: GraphState):
 
 def generate_answer(state: GraphState):
     question = state["question"]
+    documents = state["documents"]
+    loop_step = state.get("loop_step", 0)
     
-    response_prompt = 
+    response_prompt = RESPONSE_INSTRUCTIONS.format(context=documents, question=question)
     answer = llm.invoke(response_prompt)
-    return {"answer": answer}
-    
+    return {"answer": answer, "loop_step": loop_step + 1}
 
 workflow = StateGraph(GraphState)
 
@@ -140,6 +141,9 @@ workflow.set_conditional_entry_point(
     },
 )
 workflow.add_edge("retrieve", "grade_documents")
+workflow.add_edge("websearch", "generate_answer")
+workflow.add_edge("grade_documents", "generate_answer")
+workflow.add_edge("generate_answer", END)
 
 # Add memory
 graph = workflow.compile()
