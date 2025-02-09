@@ -57,7 +57,7 @@ class RouterAnswer(BaseModel):
 
 class DocumentGraderAnswer(BaseModel):
     binary_score: Literal['yes', 'no'] = Field(
-        ..., description="Indicates whether the document contains relevant information to the question."
+        None, description="Indicates whether the document contains relevant information to the question."
     )
     
 def route(state: GraphState): 
