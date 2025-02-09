@@ -8,7 +8,8 @@ from scraper.job_briefs_scraper import scrape_job_briefs
 from dotenv import load_dotenv
 import os
 import openai
-from db.mongodb_client import MongoDBClient
+from db.mongodb_client import db
+from models.job_brief_model import JobBriefModel
 
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -96,14 +97,13 @@ def add_to_chroma(chunks, vectorstore_path="./chroma"):
     else:
         print(f"Added {len(new_documents)} new documents and updated {len(updated_documents)} documents.")
 
-    return db
+    return len(new_documents)
 
 if __name__ == "__main__":
     print("🔎 Starting job scraping process...")
 
-    client = MongoDBClient()
-    job_briefs = client.get_all_job_briefs()
-    client.close()
+    jobs_collection = db["job_briefs"]
+    job_briefs = [JobBriefModel(**job) for job in list(jobs_collection.find())]
 
     # Run the async function
     documents = asyncio.run(scrape_job_documents(job_briefs))

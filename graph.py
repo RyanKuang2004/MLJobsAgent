@@ -5,6 +5,8 @@ from langchain.schema import Document
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_ollama import ChatOllama
 from langchain_chroma import Chroma
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
 from prompts import ROUTER_INSTRUCTIONS, DOCUMENT_GRADER_INSTRUCTIONS, RESPONSE_INSTRUCTIONS
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
@@ -19,6 +21,10 @@ def _set_env(var: str):
     if not os.environ.get(var):
         os.environ[var] = os.getenv(var)
 
+_set_env("LANGSMITH_API_KEY")
+os.environ["LANGCHAIN_TRACING_V2"] = "true"
+os.environ["LANGCHAIN_PROJECT"] = "langchain-academy"
+
 _set_env("OPENAI_API_KEY")
 _set_env("TAVILY_API_KEY")
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -27,6 +33,11 @@ db = Chroma(
     persist_directory='./chroma',
     embedding_function=OpenAIEmbeddings(model="text-embedding-3-small")
 )
+
+db_path = "./state_db/example.db"
+conn = sqlite3.connect(db_path, check_same_thread=False)
+memory = SqliteSaver(conn)
+
 retriever = db.as_retriever(search_kwargs={"k": 4})
 web_search_tool = TavilySearchResults(max_results=4)
 
@@ -50,13 +61,12 @@ class DocumentGraderAnswer(BaseModel):
     )
     
 def route(state: GraphState): 
-    router_llm = llm_openai.with_structured_output(RouterAnswer)
+    question = state["question"]
     
-    result = router_llm.invoke(
-        [SystemMessage(ROUTER_INSTRUCTIONS)]
-        + [HumanMessage(state['question'])]
-    )
-    source = result["datasource"]
+    router_llm = llm_openai.with_structured_output(RouterAnswer)
+    router_prompt = ROUTER_INSTRUCTIONS.format(question=question)
+    result = router_llm.invoke(router_prompt)
+    source = result.datasource
     
     if source == "websearch":
         print("---ROUTING QUESTION TO WEB SEARCH---")
@@ -106,14 +116,9 @@ def grade_documents(state: GraphState):
         )
         result = document_grader.invoke(doc_grader_instructions)    
         
-        if result['binary_score'] == "yes":
+        if result.binary_score == "yes":
             print("---GRADE: DOCUMENT RELEVANT---")
             filtered_docs.append(doc)
-        else:
-            # Edit later
-            print("---GRADE: DOCUMENT NOT RELEVANT---")
-            web_search = "Yes"
-            continue
     
     return {"documents": filtered_docs}
 
@@ -146,4 +151,4 @@ workflow.add_edge("grade_documents", "generate_answer")
 workflow.add_edge("generate_answer", END)
 
 # Add memory
-graph = workflow.compile()
+graph = workflow.compile(checkpointer=memory)

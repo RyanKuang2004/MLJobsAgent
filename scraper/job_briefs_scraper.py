@@ -5,21 +5,21 @@ from pydantic import ValidationError
 from typing import List
 import os
 import sys
-from models.job_brief import JobBrief
+from models.job_brief_model import JobBriefModel
 
 # Load environment variables from .env file
 load_dotenv()
 
-def deduplicate_jobs(jobs: List[JobBrief]) -> List[JobBrief]:
+def deduplicate_jobs(jobs: List[JobBriefModel]) -> List[JobBriefModel]:
     """
     Remove duplicate job entries based on company_name and role combination.
     Keeps the first occurrence of each unique combination.
     
     Args:
-        jobs: List of JobBrief objects
+        jobs: List of JobBriefModel objects
         
     Returns:
-        List of JobBrief objects with duplicates removed
+        List of JobBriefModel objects with duplicates removed
     """
     seen = set()
     unique_jobs = []
@@ -84,7 +84,7 @@ async def scrape_job_briefs():
                     # Process jobs from current page
                     for job_data in response['jobs']:
                         try:
-                            job = JobBrief(**job_data)
+                            job = JobBriefModel(**job_data)
                             jobs.append(job)
                         except ValidationError as e:
                             error_count += 1
